@@ -1,0 +1,28 @@
+# Environment files
+server/.env
+frontend/.env
+python-service/.env
+tryon-service/.env
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Python
+__pycache__/
+**/__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ML models
+tryon-service/models/
+tryon-service/data/
+python-service/clip-model/
+
+# Build output
+frontend/dist/
+
+# OS files
+.DS_Store
+Thumbs.db
