@@ -33,10 +33,17 @@ const connectedUsers = new Map();
 
 app.use(
   cors({
-    origin: [
-      "https://vintora-lovat.vercel.app",
-      "http://localhost:5173"
-    ],
+    origin: function (origin, callback) {
+      const allowed = [
+        "https://vintora-lovat.vercel.app",
+        "http://localhost:5173"
+      ];
+      if (!origin || allowed.includes(origin) || origin.endsWith(".vercel.app")) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true
   })
 );
