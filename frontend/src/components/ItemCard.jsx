@@ -46,7 +46,8 @@ export default function ItemCard({ item, actionLabel, actionTo }) {
           <Link to={detailTo}>{item.title}</Link>
         </h4>
         <p className="imeta">
-          Size {item.size || "Free"} - {item.city || "Pakistan"} - {rating.toFixed(1)} rating ({item.reviewCount || 0} reviews)
+          Size {item.size || "Free"} - {item.city || "Pakistan"} -{" "}
+          {item.reviewCount > 0 ? `${rating.toFixed(1)} rating (${item.reviewCount} reviews)` : "No reviews yet"}
         </p>
         <div className="item-price-row">
           <div>

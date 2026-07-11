@@ -1,29 +1,83 @@
 import ClosetItem from "../models/ClosetItem.js";
 import Listing from "../models/Listing.js";
 
-// ── Claude API call ───────────────────────────────────────────────────────────
-async function callClaude(prompt) {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+// ── Gemini API call ────────────────────────────────────────────────────────────
+// Uses GEMINI_API_KEY from server/.env — read at call time (not at module load)
+// so it works regardless of import order relative to dotenv.config().
+const GEMINI_MODEL = "gemini-2.5-flash"; // free-tier model
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
+async function callGemini(prompt) {
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is not set");
+  }
+
+  const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1000,
-      messages: [{ role: "user", content: prompt }],
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 3000,
+        responseMimeType: "application/json",
+        thinkingConfig: {
+          thinkingBudget: 0,
+        },
+      },
     }),
   });
 
   if (!response.ok) {
-    throw new Error(`Claude API error: ${response.status}`);
+    const errText = await response.text().catch(() => "");
+    throw new Error(`Gemini API error: ${response.status} ${errText}`);
   }
 
   const data = await response.json();
-  let raw = data.content[0].text.trim();
+
+  const candidate = data.candidates?.[0];
+  if (!candidate) {
+    throw new Error("Gemini returned no candidates: " + JSON.stringify(data).slice(0, 300));
+  }
+  if (candidate.finishReason === "MAX_TOKENS") {
+    throw new Error("Gemini response was truncated (MAX_TOKENS) — increase maxOutputTokens");
+  }
+
+  let raw = candidate.content?.parts?.[0]?.text?.trim() || "";
   raw = raw.replace(/```json/g, "").replace(/```/g, "").trim();
-  return JSON.parse(raw);
+
+  try {
+    return JSON.parse(raw);
+  } catch (parseErr) {
+    throw new Error(`Gemini JSON parse failed: ${parseErr.message} | raw: ${raw.slice(0, 200)}`);
+  }
+}
+
+// ── Formality helpers (used to avoid mismatched suggestions) ─────────────────
+
+const CASUAL_KEYWORDS = ["casual", "lunch", "family", "daily", "everyday", "brunch", "outing", "eid"];
+const FORMAL_KEYWORDS = [
+  "bridal", "barat", "wedding", "shaadi", "party", "formal", "reception",
+  "walima", "nikah", "gown", "heavy", "zardozi", "kundan",
+];
+const COMPLETE_OUTFIT_CATEGORIES = [
+  "dress", "gown", "suit", "lehenga", "sharara", "gharara",
+  "shalwar kameez", "kameez", "kurta", "abaya",
+];
+
+function isCasualRequest(text) {
+  const t = text.toLowerCase();
+  return CASUAL_KEYWORDS.some((k) => t.includes(k));
+}
+
+function closetHasCompleteOutfit(closetItems) {
+  if (!closetItems || !closetItems.length) return false;
+  return closetItems.some((item) =>
+    COMPLETE_OUTFIT_CATEGORIES.some((cat) => (item.category || "").toLowerCase().includes(cat))
+  );
 }
 
 // ── Smart local fallback (no API needed) ─────────────────────────────────────
@@ -70,9 +124,11 @@ const OCCASION_CONFIG = {
   },
 };
 
-function scoreListings(listings, occasion, userText, limit = 4) {
+function scoreListings(listings, occasion, userText, closetItems = [], limit = 4) {
   const config = OCCASION_CONFIG[occasion] || OCCASION_CONFIG.general;
   const t = userText.toLowerCase();
+  const casual = isCasualRequest(userText);
+  const closetComplete = closetHasCompleteOutfit(closetItems);
 
   const budgetMatch = t.match(/rs\.?\s*(\d+[\d,]*)/i) || t.match(/under\s+(\d+[\d,]*)/i);
   const budget = budgetMatch ? parseInt(budgetMatch[1].replace(/,/g, "")) : null;
@@ -98,6 +154,14 @@ function scoreListings(listings, occasion, userText, limit = 4) {
       });
 
       if (item.imageUrls?.some(Boolean)) score += 2;
+
+      // Penalise heavily formal/bridal items on casual requests
+      if (casual && FORMAL_KEYWORDS.some((k) => searchable.includes(k))) score -= 10;
+
+      // Penalise a second complete outfit if the closet already has one
+      if (closetComplete && COMPLETE_OUTFIT_CATEGORIES.some((cat) => (item.category || "").toLowerCase().includes(cat))) {
+        score -= 8;
+      }
 
       return { item, score };
     })
@@ -173,12 +237,21 @@ export const suggestOutfit = async (req, res) => {
 
     const occasion = detectOccasion(event);
     const config = OCCASION_CONFIG[occasion] || OCCASION_CONFIG.general;
+    const casual = isCasualRequest(event);
+    const closetComplete = closetHasCompleteOutfit(closetItems);
 
-    // Build catalogue text for Claude (top 20 most relevant by occasion keywords)
+    // Build catalogue text for Gemini (top 20 most relevant by occasion keywords,
+    // with formality and duplicate-outfit penalties applied)
     const allScored = listings
       .map((item) => {
         const searchable = `${item.title} ${item.category} ${item.occasion || ""} ${(item.tags || []).join(" ")}`.toLowerCase();
-        const score = config.keywords.reduce((s, kw) => s + (searchable.includes(kw) ? 3 : 0), 0);
+        let score = config.keywords.reduce((s, kw) => s + (searchable.includes(kw) ? 3 : 0), 0);
+
+        if (casual && FORMAL_KEYWORDS.some((k) => searchable.includes(k))) score -= 10;
+        if (closetComplete && COMPLETE_OUTFIT_CATEGORIES.some((cat) => (item.category || "").toLowerCase().includes(cat))) {
+          score -= 8;
+        }
+
         return { item, score };
       })
       .sort((a, b) => b.score - a.score)
@@ -188,10 +261,17 @@ export const suggestOutfit = async (req, res) => {
       `[${item._id}] ${item.title} | ${item.category} | Rs.${item.price || 0} | ${item.city || "N/A"} | ${item.type || "Rent"}${item.occasion ? " | " + item.occasion : ""}`
     ).join("\n");
 
-    const closetText = closetItems.length
+    let closetText = closetItems.length
       ? "User's own closet items (mark these pieces as 'own' if used, with empty itemId):\n" +
         closetItems.map((i) => `  - ${i.itemName} (${i.category})`).join("\n")
       : "User has no closet items — suggest rental items only.";
+
+    if (closetComplete) {
+      closetText +=
+        "\nIMPORTANT: A closet item above is already a complete outfit (dress/gown/suit/lehenga/kameez). " +
+        "Do NOT suggest another dress/gown/suit/kameez as a piece — only complementary accessories " +
+        "(footwear, jewellery, bag, dupatta) that match its colour.";
+    }
 
     const prompt = `You are Vintora's AI Fashion Buddy — a warm, expert Pakistani fashion stylist.
 
@@ -225,17 +305,20 @@ Occasion styling rules:
 - Mehndi: MUST be bright colours (yellow, green, orange, pink), festive, comfortable for dancing
 - Barat/Wedding: rich fabrics, deep tones (red, maroon, gold), heavy embroidery, formal
 - Walima: soft pastels (ivory, champagne, blush), elegant, lighter than Barat
-- Eid/Casual: fresh, breathable, modest, lawn or cotton preferred
+- Eid/Casual: fresh, breathable, modest, lawn or cotton preferred — NEVER heavily embellished, bridal, or party-level pieces
 - Formal: polished, sophisticated, chiffon or net fabrics
 
-IMPORTANT: itemId must be EXACTLY the MongoDB ID shown in brackets in the catalogue list, or empty string "" for closet items.
-Only use catalogue items from the list above for rentals. If a category has no good match, still include it with the closest item.`;
+Additional rules:
+- Match every suggested piece's colour to the closet/base item's colour family — avoid clashing or same-shade-on-shade combinations
+- If the closet already contains a complete outfit (dress, gown, suit, lehenga, kameez), do not suggest another dress/gown/suit/kameez — only complementary accessories
+- itemId must be EXACTLY the MongoDB ID shown in brackets in the catalogue list, or empty string "" for closet items.
+- Only use catalogue items from the list above for rentals. If a category has no good match, still include it with the closest item.`;
 
     let result;
     try {
-      result = await callClaude(prompt);
+      result = await callGemini(prompt);
 
-      // Enrich Claude's response with real image URLs and metadata
+      // Enrich Gemini's response with real image URLs and metadata
       const listingMap = {};
       listings.forEach((l) => { listingMap[l._id.toString()] = l; });
 
@@ -273,11 +356,11 @@ Only use catalogue items from the list above for rentals. If a category has no g
       });
 
     } catch (aiErr) {
-      console.warn("[fashionBuddyController] Claude failed, using smart fallback:", aiErr.message);
+      console.warn("[fashionBuddyController] Gemini failed, using smart fallback:", aiErr.message);
 
       const closetPieces = buildClosetPieces(closetItems, 2);
       const remainingSlots = Math.max(4 - closetPieces.length, 2);
-      const catalogPieces = scoreListings(listings, occasion, event, remainingSlots);
+      const catalogPieces = scoreListings(listings, occasion, event, closetItems, remainingSlots);
 
       result = {
         intro: closetItems.length

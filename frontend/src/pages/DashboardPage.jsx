@@ -313,15 +313,19 @@ export default function DashboardPage() {
   }, [listings]);
 
   const sellerKpis = useMemo(() => {
-    const averageRating = listings.length
-      ? (listings.reduce((sum, item) => sum + (item.rating || 0), 0) / listings.length).toFixed(1)
-      : "0.0";
+    // Only count listings that actually have reviews, weighted by review count,
+    // so a fresh listing's default rating value can't inflate the average.
+    const reviewedListings = listings.filter((item) => (item.reviewCount || 0) > 0);
+    const totalReviews = reviewedListings.reduce((sum, item) => sum + item.reviewCount, 0);
+    const weightedRatingSum = reviewedListings.reduce((sum, item) => sum + item.rating * item.reviewCount, 0);
+    const averageRating = totalReviews > 0 ? (weightedRatingSum / totalReviews).toFixed(1) : null;
 
     return {
       totalEarnings: earnings.totalEarnings || 0,
       activeListings: listings.length,
       activeBookings: sellerBookings.filter((booking) => booking.status === "approved").length,
-      averageRating
+      averageRating,
+      totalReviews
     };
   }, [earnings.totalEarnings, listings, sellerBookings]);
 
@@ -343,8 +347,8 @@ export default function DashboardPage() {
         return {
           ...current,
           type: value,
-          pricingModel: value === "Sell" ? "fixed price" : "per day",
-          deposit: value === "Sell" ? 0 : current.deposit
+          pricingModel: value === "Buy" ? "fixed price" : "per day",
+          deposit: value === "Buy" ? 0 : current.deposit
         };
       }
       return { ...current, [name]: value };
@@ -696,8 +700,10 @@ export default function DashboardPage() {
                     </div>
                     <div className="kpi-block">
                       <div className="klabel">Average Rating</div>
-                      <div className="kval">{sellerKpis.averageRating} ★</div>
-                      <div className="kchange">Calculated from your listings</div>
+                      <div className="kval">{sellerKpis.averageRating ? `${sellerKpis.averageRating} ★` : "—"}</div>
+                      <div className="kchange">
+                        {sellerKpis.averageRating ? `From ${sellerKpis.totalReviews} reviews` : "No reviews yet"}
+                      </div>
                     </div>
                   </>
                 ) : (
@@ -747,7 +753,7 @@ export default function DashboardPage() {
                           <strong>{booking.listing?.title}</strong>
                         </td>
                         <td>{isSeller ? booking.buyer?.name : booking.seller?.name}</td>
-                        <td>{booking.type === "rent" ? "Rent" : "Buy"}</td>
+                        <td>{booking.type === "rent" ? "Rent" : "Sell"}</td>
                         <td>Rs. {booking.totalAmount.toLocaleString()}</td>
                         <td>
                           <span className={`spill ${bookingClass(booking.status)}`}>{formatBookingStatus(booking.status)}</span>
@@ -817,7 +823,7 @@ export default function DashboardPage() {
                         ) : name === "type" ? (
                           <select className="price-input" name={name} onChange={handleChange} value={form[name]}>
                             <option value="Rent">Rent</option>
-                            <option value="Buy">Buy</option>
+                            <option value="Buy">Sell</option>
                           </select>
                         ) : name === "pricingModel" ? (
                           <select className="price-input" name={name} onChange={handleChange} value={form[name]}>
@@ -851,21 +857,44 @@ export default function DashboardPage() {
                       Add up to 5 real photos. You can select multiple at once, or choose more photos again to add them.
                       {listingImageFiles.length ? ` Selected ${listingImageFiles.length}/5.` : ""}
                     </p>
-                    {(listingImageFiles.length || form.imageUrls?.length) ? (
-                      <div className="gallery-preview-row">
-                        {(listingImageFiles.length ? listingImageFiles.map((file) => URL.createObjectURL(file)) : form.imageUrls).map((url, index) => (
-                          <div className="gallery-preview" key={`${url}-${index}`}>
-                            <img alt={`Listing preview ${index + 1}`} src={url} />
-                            <span>{["Front", "Back", "Embroidery", "Size", "Condition"][index] || `Photo ${index + 1}`}</span>
-                            {listingImageFiles.length ? (
-                              <button className="btn btn-outline" onClick={() => handleRemoveListingImage(index)} type="button">
-                                Remove
-                              </button>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
+                    {(listingImageFiles.length ? listingImageFiles.map((file) => URL.createObjectURL(file)) : form.imageUrls).map((url, index) => (
+  <div className="gallery-preview" key={`${url}-${index}`} style={{ position: "relative" }}>
+    <button
+      onClick={() => {
+        if (listingImageFiles.length) {
+          handleRemoveListingImage(index);
+        } else {
+          setForm((current) => ({
+            ...current,
+            imageUrls: current.imageUrls.filter((_, i) => i !== index)
+          }));
+        }
+      }}
+      type="button"
+      style={{
+        position: "absolute",
+        top: "6px",
+        right: "6px",
+        width: "24px",
+        height: "24px",
+        borderRadius: "50%",
+        background: "rgba(0,0,0,0.6)",
+        color: "#fff",
+        border: "none",
+        cursor: "pointer",
+        fontSize: "14px",
+        display: "grid",
+        placeItems: "center",
+        lineHeight: 1,
+        zIndex: 10
+      }}
+    >
+      ×
+    </button>
+    <img alt={`Listing preview ${index + 1}`} src={url} />
+    <span>{["Front", "Back", "Embroidery", "Size", "Condition"][index] || `Photo ${index + 1}`}</span>
+  </div>
+))}
                   </div>
                   <div className="filter-group">
                     <div className="filter-group-title">Description</div>
@@ -908,6 +937,7 @@ export default function DashboardPage() {
                       <th>Item</th>
                       <th>Type</th>
                       <th>Approval</th>
+                      <th>Review Note</th>
                       <th>Availability</th>
                       <th>Blocked Dates</th>
                       <th>Price</th>
@@ -926,6 +956,15 @@ export default function DashboardPage() {
                           <span className={`spill ${listing.status === "Live" ? "confirmed" : listing.status === "Pending Approval" ? "pending" : "rented"}`}>
                             {formatListingStatus(listing.status)}
                           </span>
+                        </td>
+                        <td>
+                          {listing.rejectionReason ? (
+                            <span className="muted-note">{listing.rejectionReason}</span>
+                          ) : listing.status === "Pending Approval" ? (
+                            <span className="muted-note">Waiting for admin review.</span>
+                          ) : (
+                            <span className="muted-note">Approved for marketplace.</span>
+                          )}
                         </td>
                         <td>
                           <select

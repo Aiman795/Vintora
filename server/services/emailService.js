@@ -131,3 +131,18 @@ export async function sendListingApprovedEmail({ sellerEmail, sellerName, itemTi
   `);
   await sendEmail({ to: sellerEmail, subject: `Your listing is live — ${itemTitle}`, html });
 }
+
+export async function sendVerificationEmail({ name, email, code }) {
+  const html = emailShell(`
+    <h2 style="margin:0 0 16px;color:#1a0a00;font-size:22px;">Verify your Vintora email</h2>
+    <p style="color:#555;line-height:1.7;margin:0 0 16px;">
+      Hi <strong>${name}</strong>, enter this code in Vintora to activate your account.
+    </p>
+    <div style="background:#faf6ec;border:1px solid #e8dfc8;border-radius:8px;padding:20px;text-align:center;margin-bottom:20px;">
+      <div style="font-size:30px;letter-spacing:8px;color:#1a0a00;font-weight:bold;">${code}</div>
+      <p style="margin:10px 0 0;color:#777;font-size:13px;">This code expires in 15 minutes.</p>
+    </div>
+    <p style="color:#555;line-height:1.7;margin:0;">If you did not create a Vintora account, you can ignore this email.</p>
+  `);
+  await sendEmail({ to: email, subject: "Verify your Vintora email", html });
+}

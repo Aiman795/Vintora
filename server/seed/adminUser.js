@@ -7,7 +7,7 @@ dotenv.config();
 
 async function ensureAdmin() {
   try {
-    const mongoUri = process.env.MONGO_URI || "mongodb://localhost:27017/vintora";
+    const mongoUri = process.env.MONGODB_URI || "mongodb://localhost:27017/vintora";
     await mongoose.connect(mongoUri);
 
     const email = "admin@vintora.com";

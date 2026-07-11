@@ -22,6 +22,16 @@ export async function loginUser(payload) {
   return data;
 }
 
+export async function verifyEmail(payload) {
+  const { data } = await api.post("/verify-email", payload);
+  return data;
+}
+
+export async function resendVerification(email) {
+  const { data } = await api.post("/resend-verification", { email });
+  return data;
+}
+
 export async function fetchProfile() {
   const { data } = await api.get("/user/profile");
   return data;
@@ -176,8 +186,8 @@ export async function approveListing(id) {
   return data;
 }
 
-export async function rejectListing(id) {
-  const { data } = await api.put(`/admin/listings/${id}/reject`);
+export async function rejectListing(id, reason) {
+  const { data } = await api.put(`/admin/listings/${id}/reject`, { reason });
   return data;
 }
 

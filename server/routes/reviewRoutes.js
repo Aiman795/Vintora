@@ -6,6 +6,7 @@ import Notification from "../models/Notification.js";
 import Review from "../models/Review.js";
 
 const router = express.Router();
+const bannedTerms = ["abuse", "scam", "fraud", "idiot", "stupid"];
 
 async function refreshListingRating(listingId) {
   const reviews = await Review.find({ listing: listingId }).select("rating");
@@ -62,6 +63,12 @@ router.post("/", protect, async (req, res) => {
       return res.status(400).json({ message: "bookingId and a rating from 1 to 5 are required." });
     }
 
+    const reviewText = (comment || "").trim();
+    const normalizedComment = reviewText.toLowerCase();
+    if (bannedTerms.some((term) => normalizedComment.includes(term))) {
+      return res.status(400).json({ message: "Review content violates community guidelines." });
+    }
+
     const booking = await Booking.findById(bookingId).populate("listing").populate("seller", "name email");
 
     if (!booking) {
@@ -87,7 +94,8 @@ router.post("/", protect, async (req, res) => {
       reviewer: req.user._id,
       seller: booking.seller._id,
       rating: numericRating,
-      comment: comment || ""
+      comment: reviewText,
+      verifiedRental: true
     });
 
     await refreshListingRating(booking.listing._id);

@@ -2,11 +2,23 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import ItemCard from "../components/ItemCard.jsx";
 import { fetchPublicListings, visualSearch } from "../services/api.js";
 
+const nearbyCityMap = {
+  Islamabad: ["Rawalpindi"],
+  Rawalpindi: ["Islamabad"],
+  Lahore: ["Faisalabad", "Multan"],
+  Faisalabad: ["Lahore", "Multan"],
+  Multan: ["Faisalabad", "Lahore"],
+  Karachi: [],
+  Peshawar: ["Islamabad", "Rawalpindi"],
+};
+
 export default function BrowsePage() {
   const [listings, setListings] = useState([]);
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("All Items");
   const [occasion, setOccasion] = useState("All");
+  const [selectedCity, setSelectedCity] = useState("All");
+  const [includeNearby, setIncludeNearby] = useState(true);
   const [selectedTypes, setSelectedTypes] = useState(["Rent", "Buy"]);
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [vsFile, setVsFile] = useState(null);
@@ -30,6 +42,10 @@ export default function BrowsePage() {
 
   const filteredListings = useMemo(() => {
     if (vsResults) return [];
+    const nearbyCities = selectedCity === "All"
+      ? []
+      : [selectedCity, ...(includeNearby ? nearbyCityMap[selectedCity] || [] : [])];
+
     return listings.filter((item) => {
       const matchesSearch = [
         item.title,
@@ -47,6 +63,7 @@ export default function BrowsePage() {
 
       const matchesType = selectedTypes.includes(item.type);
       const matchesCategory = selectedCategories.length === 0 || selectedCategories.includes(item.category);
+      const matchesCity = selectedCity === "All" || nearbyCities.includes(item.city);
       const matchesTab =
         tab === "All Items" ||
         (tab === "For Rent" && item.type === "Rent") ||
@@ -54,9 +71,13 @@ export default function BrowsePage() {
       const matchesOccasion = occasion === "All" || item.occasion === occasion;
       const notSold = !(item.type === "Buy" && item.availabilityStatus === "Sold");
 
-      return matchesSearch && matchesType && matchesCategory && matchesTab && matchesOccasion && notSold;
+      return matchesSearch && matchesType && matchesCategory && matchesCity && matchesTab && matchesOccasion && notSold;
     });
-  }, [listings, occasion, search, tab, vsResults, selectedTypes, selectedCategories]);
+  }, [listings, occasion, search, tab, vsResults, selectedTypes, selectedCategories, selectedCity, includeNearby]);
+
+  const cityOptions = useMemo(() => {
+    return [...new Set(listings.map((item) => item.city).filter(Boolean))].sort();
+  }, [listings]);
 
   const handleVisualSearch = async (file) => {
     if (!file) return;
@@ -113,6 +134,8 @@ export default function BrowsePage() {
     setOccasion("All");
     setSelectedTypes(["Rent", "Buy"]);
     setSelectedCategories([]);
+    setSelectedCity("All");
+    setIncludeNearby(true);
     setTab("All Items");
     setSearch("");
   };
@@ -143,6 +166,35 @@ export default function BrowsePage() {
               <label>For Sale</label>
               <span className="fcount">{listings.filter((item) => item.type === "Buy").length}</span>
             </div>
+          </div>
+
+          <div className="filter-group">
+            <div className="filter-group-title">Location</div>
+            <select
+              className="price-input"
+              onChange={(event) => setSelectedCity(event.target.value)}
+              value={selectedCity}
+            >
+              <option value="All">All cities</option>
+              {cityOptions.map((city) => (
+                <option key={city} value={city}>{city}</option>
+              ))}
+            </select>
+            {selectedCity !== "All" ? (
+              <label className="filter-item nearby-toggle">
+                <input
+                  checked={includeNearby}
+                  onChange={(event) => setIncludeNearby(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Include nearby areas</span>
+              </label>
+            ) : null}
+            {selectedCity !== "All" && includeNearby && nearbyCityMap[selectedCity]?.length ? (
+              <p className="muted-note location-hint">
+                Also showing {nearbyCityMap[selectedCity].join(", ")}
+              </p>
+            ) : null}
           </div>
 
           <div className="filter-group">

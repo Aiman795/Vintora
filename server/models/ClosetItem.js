@@ -42,6 +42,26 @@ const closetItemSchema = new mongoose.Schema(
       ],
       default: "other",
     },
+    detectedCategory: {
+      type: String,
+      default: "",
+    },
+    dominantColor: {
+      type: String,
+      default: "",
+    },
+    colors: {
+      type: [String],
+      default: [],
+    },
+    tags: {
+      type: [String],
+      default: [],
+    },
+    autoTagged: {
+      type: Boolean,
+      default: false,
+    },
     imageUrl: {
       type: String,
       required: true,

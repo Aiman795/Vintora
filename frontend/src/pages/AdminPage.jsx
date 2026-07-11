@@ -129,8 +129,14 @@ export default function AdminPage() {
 
   const handleRejectListing = async (id) => {
     setMessage("");
+    const reason = window.prompt("Enter a clear reason for rejecting this listing:");
+    if (!reason || reason.trim().length < 8) {
+      setMessage("Listing rejection cancelled. A clear reason is required.");
+      return;
+    }
+
     try {
-      await rejectListing(id);
+      await rejectListing(id, reason.trim());
       await refreshAfterAction("Listing rejected and archived.");
     } catch (error) {
       setMessage(error.response?.data?.message || "Unable to reject listing.");
@@ -264,6 +270,7 @@ export default function AdminPage() {
                   <th>Seller</th>
                   <th>Price</th>
                   <th>Status</th>
+                  <th>Review Note</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -280,6 +287,15 @@ export default function AdminPage() {
                       <span className={`spill ${statusClass(listing.status)}`}>{statusLabel(listing.status)}</span>
                     </td>
                     <td>
+                      {listing.rejectionReason ? (
+                        <span className="muted-note">{listing.rejectionReason}</span>
+                      ) : listing.lastModeratedAt ? (
+                        <span className="muted-note">Reviewed {new Date(listing.lastModeratedAt).toLocaleDateString()}</span>
+                      ) : (
+                        <span className="muted-note">Awaiting review</span>
+                      )}
+                    </td>
+                    <td>
                       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                         <button className="btn btn-outline" onClick={() => handleApproveListing(listing._id)} type="button">
                           Approve
@@ -293,7 +309,7 @@ export default function AdminPage() {
                 ))}
                 {listings.length === 0 ? (
                   <tr>
-                    <td colSpan="5">No listings found for this filter.</td>
+                    <td colSpan="6">No listings found for this filter.</td>
                   </tr>
                 ) : null}
               </tbody>
@@ -341,7 +357,7 @@ export default function AdminPage() {
                       {booking.seller?.name || "N/A"}
                       <div className="muted-note">{booking.seller?.email}</div>
                     </td>
-                    <td>{booking.type === "rent" ? "Rent" : "Buy"}</td>
+                    <td>{booking.type === "rent" ? "Rent" : "Sale"}</td>
                     <td>
                       {booking.startDate
                         ? `${new Date(booking.startDate).toLocaleDateString()} – ${new Date(booking.endDate).toLocaleDateString()}`

@@ -203,11 +203,20 @@ export default function ProductPage() {
                 </span>
               </div>
               <div style={{ marginTop: "2px" }}>
-                <span className="lstars">★★★★★</span>{" "}
-                <span className="muted-note">
-                  {listing.rating?.toFixed(1)} · {listing.reviewCount} reviews
-                </span>
-              </div>
+              {listing.reviewCount > 0 ? (
+                <>
+                  <span className="lstars">
+                    {"★".repeat(Math.round(listing.rating))}
+                    {"☆".repeat(5 - Math.round(listing.rating))}
+                  </span>{" "}
+                  <span className="muted-note">
+                    {listing.rating?.toFixed(1)} · {listing.reviewCount} reviews
+                  </span>
+                </>
+              ) : (
+                <span className="muted-note">No reviews yet</span>
+              )}
+            </div>
             </div>
             <Link
               className="btn btn-outline"

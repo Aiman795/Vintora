@@ -24,6 +24,35 @@ const blockedDateSchema = new mongoose.Schema(
   { _id: true }
 );
 
+const moderationHistorySchema = new mongoose.Schema(
+  {
+    action: {
+      type: String,
+      enum: ["submitted", "approved", "rejected", "updated", "status_changed"],
+      required: true
+    },
+    reason: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    actor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null
+    },
+    actorRole: {
+      type: String,
+      default: ""
+    },
+    at: {
+      type: Date,
+      default: Date.now
+    }
+  },
+  { _id: true }
+);
+
 const listingSchema = new mongoose.Schema(
   {
     owner: {
@@ -104,8 +133,8 @@ const listingSchema = new mongoose.Schema(
       default: []
     },
     rating: {
-      type: Number,
-      default: 4.8
+    type: Number,
+    default: 0
     },
     reviewCount: {
       type: Number,
@@ -120,6 +149,24 @@ const listingSchema = new mongoose.Schema(
       type: String,
       enum: ["Live", "Pending Approval", "Archived"],
       default: "Pending Approval"
+    },
+    rejectionReason: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    lastModeratedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null
+    },
+    lastModeratedAt: {
+      type: Date,
+      default: null
+    },
+    moderationHistory: {
+      type: [moderationHistorySchema],
+      default: []
     },
     featured: {
       type: Boolean,

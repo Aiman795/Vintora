@@ -132,7 +132,14 @@ router.post("/", protect, async (req, res) => {
     const listing = await Listing.create({
       ...req.body,
       owner: req.user._id,
-      status: "Pending Approval"
+      status: "Pending Approval",
+      rejectionReason: "",
+      moderationHistory: [{
+        action: "submitted",
+        actor: req.user._id,
+        actorRole: req.user.role,
+        reason: "Submitted by seller"
+      }]
     });
 
     const populated = await listing.populate("owner", "name email");
@@ -159,7 +166,16 @@ router.put("/:id", protect, async (req, res) => {
       return res.status(403).json({ message: "You can only update your own listings." });
     }
 
-    Object.assign(listing, req.body, { status: "Pending Approval" });
+    Object.assign(listing, req.body, {
+      status: "Pending Approval",
+      rejectionReason: ""
+    });
+    listing.moderationHistory.push({
+      action: "updated",
+      actor: req.user._id,
+      actorRole: req.user.role,
+      reason: "Updated by seller and resent for approval"
+    });
     await listing.save();
     const populated = await listing.populate("owner", "name email");
 
@@ -190,7 +206,24 @@ router.put("/:id/availability", protect, async (req, res) => {
       return res.status(403).json({ message: "You can only update your own listings." });
     }
 
+    if (["Available", "Sold"].includes(availabilityStatus)) {
+      const activeBooking = await Booking.findOne({
+        listing: listing._id,
+        status: "approved"
+      });
+
+      if (activeBooking && availabilityStatus === "Sold") {
+        return res.status(400).json({ message: "This item has an approved booking and cannot be marked sold." });
+      }
+    }
+
     listing.availabilityStatus = availabilityStatus;
+    listing.moderationHistory.push({
+      action: "status_changed",
+      actor: req.user._id,
+      actorRole: req.user.role,
+      reason: `Availability changed to ${availabilityStatus}`
+    });
     await listing.save();
 
     const populated = await listing.populate("owner", "name email role");
@@ -217,7 +250,7 @@ router.put("/:id/blocked-dates", protect, async (req, res) => {
       return res.status(403).json({ message: "You can only update your own listings." });
     }
 
-    listing.blockedDates = blockedDates
+    const normalizedBlockedDates = blockedDates
       .map((item) => ({
         startDate: new Date(item.startDate),
         endDate: new Date(item.endDate),
@@ -225,6 +258,23 @@ router.put("/:id/blocked-dates", protect, async (req, res) => {
       }))
       .filter((item) => !Number.isNaN(item.startDate.getTime()) && !Number.isNaN(item.endDate.getTime()) && item.endDate >= item.startDate);
 
+    const approvedBookings = await Booking.find({
+      listing: listing._id,
+      type: "rent",
+      status: "approved"
+    }).select("startDate endDate");
+
+    const hasConflict = normalizedBlockedDates.some((blocked) =>
+      approvedBookings.some((booking) =>
+        blocked.startDate <= booking.endDate && blocked.endDate >= booking.startDate
+      )
+    );
+
+    if (hasConflict) {
+      return res.status(400).json({ message: "Blocked dates cannot overlap approved bookings." });
+    }
+
+    listing.blockedDates = normalizedBlockedDates;
     await listing.save();
     res.json(listing);
   } catch (error) {

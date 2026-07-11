@@ -8,6 +8,59 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || "http://localhost:8000";
 
+function inferCategoryFromText(text = "") {
+  const value = text.toLowerCase();
+  const pairs = [
+    ["shalwar", "shalwar_kameez"],
+    ["kameez", "shalwar_kameez"],
+    ["kurta", "kurta"],
+    ["lehenga", "lehenga_sharara"],
+    ["sharara", "lehenga_sharara"],
+    ["gharara", "gharara_farshi"],
+    ["anarkali", "anarkali"],
+    ["gown", "gown"],
+    ["saree", "saree"],
+    ["sherwani", "sherwani"],
+    ["dupatta", "dupatta_shawl"],
+    ["necklace", "necklace_choker"],
+    ["bangle", "bangles_kara"],
+    ["khussa", "khussa_kheri"],
+    ["shoe", "footwear"],
+    ["heel", "footwear"],
+    ["bag", "bags_clutches"],
+    ["clutch", "bags_clutches"],
+  ];
+  return pairs.find(([needle]) => value.includes(needle))?.[1] || "other";
+}
+
+async function analyzeClosetImage(filePath, itemName) {
+  try {
+    const formData = new FormData();
+    formData.append("image", fs.createReadStream(filePath));
+    const pythonRes = await axios.post(
+      `${PYTHON_SERVICE_URL}/closet/analyze`,
+      formData,
+      { headers: formData.getHeaders(), timeout: 12000 }
+    );
+    return {
+      detectedCategory: pythonRes.data.category || "other",
+      dominantColor: pythonRes.data.dominantColor || "",
+      colors: pythonRes.data.colors || [],
+      tags: pythonRes.data.tags || [],
+      autoTagged: true
+    };
+  } catch (error) {
+    const detectedCategory = inferCategoryFromText(itemName || path.basename(filePath));
+    return {
+      detectedCategory,
+      dominantColor: "",
+      colors: [],
+      tags: detectedCategory === "other" ? [] : [detectedCategory],
+      autoTagged: detectedCategory !== "other"
+    };
+  }
+}
+
 export const getClosetItems = async (req, res) => {
   try {
     const items = await ClosetItem.find({ userId: req.user._id }).sort({ createdAt: -1 });
@@ -30,6 +83,7 @@ export const uploadClosetItem = async (req, res) => {
     }
 
     let embedding = [];
+    const analysis = await analyzeClosetImage(req.file.path, itemName);
     try {
       const formData = new FormData();
       formData.append("image", fs.createReadStream(req.file.path));
@@ -48,7 +102,12 @@ export const uploadClosetItem = async (req, res) => {
     const newItem = await ClosetItem.create({
       userId: req.user._id,
       itemName: itemName.trim(),
-      category: category || "other",
+      category: category && category !== "auto" ? category : analysis.detectedCategory || "other",
+      detectedCategory: analysis.detectedCategory || "",
+      dominantColor: analysis.dominantColor || "",
+      colors: analysis.colors || [],
+      tags: analysis.tags || [],
+      autoTagged: analysis.autoTagged || false,
       imageUrl,
       embedding,
     });

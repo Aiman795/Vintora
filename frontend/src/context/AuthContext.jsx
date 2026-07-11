@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { fetchProfile, loginUser, registerUser } from "../services/api.js";
+import { fetchProfile, loginUser, registerUser, verifyEmail } from "../services/api.js";
 import socket from "../services/socket.js";
 
 const AuthContext = createContext(null);
@@ -68,6 +68,14 @@ export function AuthProvider({ children }) {
 
   const register = async (payload) => {
     const data = await registerUser(payload);
+    if (data.token) {
+      persistSession(data);
+    }
+    return data;
+  };
+
+  const confirmEmail = async (payload) => {
+    const data = await verifyEmail(payload);
     persistSession(data);
     return data;
   };
@@ -88,6 +96,7 @@ export function AuthProvider({ children }) {
         loading,
         login,
         register,
+        confirmEmail,
         logout
       }}
     >

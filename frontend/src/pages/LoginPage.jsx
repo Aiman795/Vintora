@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import { resendVerification } from "../services/api.js";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -8,6 +9,8 @@ export default function LoginPage() {
   const location = useLocation();
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [verificationEmail, setVerificationEmail] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleChange = (event) => {
@@ -17,6 +20,7 @@ export default function LoginPage() {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
+    setNotice("");
     setLoading(true);
 
     try {
@@ -24,9 +28,23 @@ export default function LoginPage() {
       const fallbackPath = data.user?.role === "admin" ? "/admin" : "/dashboard";
       navigate(location.state?.from?.pathname || fallbackPath, { replace: true });
     } catch (err) {
+      if (err.response?.data?.requiresVerification) {
+        setVerificationEmail(err.response.data.email || form.email);
+      }
       setError(err.response?.data?.message || "Unable to sign in.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setError("");
+    setNotice("");
+    try {
+      const data = await resendVerification(verificationEmail || form.email);
+      setNotice(data.message || "Verification code sent.");
+    } catch (err) {
+      setError(err.response?.data?.message || "Unable to resend verification code.");
     }
   };
 
@@ -50,11 +68,17 @@ export default function LoginPage() {
               <div className="filter-group-title">Password</div>
               <input className="price-input" name="password" onChange={handleChange} required type="password" value={form.password} />
             </div>
+            {notice ? <p className="muted-note">{notice}</p> : null}
             {error ? <p className="muted-note">{error}</p> : null}
-            <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
               <button className="btn btn-primary" disabled={loading} type="submit">
                 {loading ? "Signing In..." : "Login"}
               </button>
+              {verificationEmail ? (
+                <button className="btn btn-gold" onClick={handleResend} type="button">
+                  Resend Verification Code
+                </button>
+              ) : null}
               <Link className="btn btn-outline" to="/register">
                 Create Account
               </Link>

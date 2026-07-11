@@ -229,7 +229,6 @@ export default function BuddyPage() {
                   <span className="oprice">{piece.type === "own" ? "Your closet" : "Rental"}</span>
                 </Link>
               ))}
-              {outfit.tip && <div className="outfit-note">{outfit.tip}</div>}
               <Link className="btn btn-gold" style={{ width: "100%", marginTop: "14px" }} to="/browse">
                 Browse Catalogue
               </Link>
@@ -251,7 +250,7 @@ export default function BuddyPage() {
                       <h5>{item.title}</h5>
                       <p>{item.category} · {item.city} · Rs. {item.price?.toLocaleString()}</p>
                     </div>
-                    <span className="oprice">{item.type === "Rent" ? "Rental" : "Buy"}</span>
+                    <span className="oprice">{item.type === "Rent" ? "Rental" : "Sale"}</span>
                   </Link>
                 );
               })}

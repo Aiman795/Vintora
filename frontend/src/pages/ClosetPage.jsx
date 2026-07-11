@@ -57,7 +57,7 @@ export default function ClosetPage() {
   const [items, setItems] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ itemName: "", category: "shalwar_kameez" });
+  const [form, setForm] = useState({ itemName: "", category: "auto" });
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [suggestions, setSuggestions] = useState(null);
@@ -122,7 +122,7 @@ export default function ClosetPage() {
       if (data.success) {
         setItems((prev) => [data.item, ...prev]);
         setShowForm(false);
-        setForm({ itemName: "", category: "shalwar_kameez" });
+        setForm({ itemName: "", category: "auto" });
         setImageFile(null);
         setImagePreview(null);
       } else {
@@ -202,7 +202,7 @@ export default function ClosetPage() {
               ) : (
                 <span>
                   <strong>Add product photo</strong>
-                  <small>JPG or PNG, clear front view preferred</small>
+                  <small>JPG or PNG. Vintora will auto-detect category and colour.</small>
                 </span>
               )}
             </button>
@@ -231,6 +231,7 @@ export default function ClosetPage() {
                 onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
                 value={form.category}
               >
+                <option value="auto">Auto-detect from image</option>
                 {categoryOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
@@ -282,7 +283,13 @@ export default function ClosetPage() {
               </div>
               <div className="closet-item-body">
                 <h5>{item.itemName}</h5>
-                <p>{prettyCategory(item.category)}</p>
+                <p>
+                  {prettyCategory(item.category)}
+                  {item.dominantColor ? ` - ${item.dominantColor}` : ""}
+                </p>
+                {item.autoTagged ? (
+                  <small className="muted-note">Auto-tagged by Vintora AI</small>
+                ) : null}
               </div>
               <button className="closet-delete" onClick={() => handleDelete(item._id)} type="button">
                 Remove

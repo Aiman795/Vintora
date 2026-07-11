@@ -33,6 +33,10 @@ const reviewSchema = new mongoose.Schema(
       trim: true,
       maxlength: 500,
       default: ""
+    },
+    verifiedRental: {
+      type: Boolean,
+      default: true
     }
   },
   {

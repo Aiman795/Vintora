@@ -9,6 +9,16 @@ import Listing from "../models/Listing.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+async function fallbackLiveListings(limit = 4) {
+  return Listing.find({
+    status: "Live",
+    availabilityStatus: { $ne: "Sold" }
+  })
+    .sort({ featured: -1, createdAt: -1 })
+    .limit(limit)
+    .lean();
+}
+
 export const visualSearch = async (req, res) => {
   let imagePath;
   try {
@@ -67,11 +77,15 @@ export const visualSearch = async (req, res) => {
       fs.unlinkSync(imagePath);
     }
 
+    const fallbackResults = await fallbackLiveListings();
+
     return res.status(200).json({
       success: true,
       source: "visual-search-offline",
-      message: "AI visual search service is offline. No fallback catalog items were shown.",
-      results: [],
+      message: fallbackResults.length
+        ? "AI visual search is offline. Showing fresh live listings instead."
+        : "AI visual search is offline and no live listings are available.",
+      results: fallbackResults,
     });
   }
 };
