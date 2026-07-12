@@ -3,11 +3,11 @@ import { Link } from "react-router-dom";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
+const UPLOADS_BASE = API_URL.replace(/\/api\/?$/, "");
 function closetImageUrl(url) {
   if (!url) return "";
-  return url.startsWith("http") ? url : `http://localhost:5000${url}`;
+  return url.startsWith("http") ? url : `${UPLOADS_BASE}${url}`;
 }
-
 const categoryOptions = [
   { value: "shalwar_kameez", label: "Shalwar Kameez" },
   { value: "kurta", label: "Kurta / Kurti" },

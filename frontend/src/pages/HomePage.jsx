@@ -3,9 +3,10 @@ import { Link } from "react-router-dom";
 import Footer from "../components/Footer.jsx";
 import { fetchPublicListings } from "../services/api.js";
 
+const UPLOADS_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "");
 function listingImageUrl(url) {
   if (!url) return "";
-  return url.startsWith("http") ? url : `http://localhost:5000${url}`;
+  return url.startsWith("http") ? url : `${UPLOADS_BASE}${url}`;
 }
 
 export default function HomePage() {
