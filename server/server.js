@@ -2,6 +2,8 @@ import dotenv from "dotenv";
 dotenv.config();
 import express from "express";
 import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { connectDb } from "./config/db.js";
@@ -25,6 +27,8 @@ import searchRoutes from "./routes/searchRoutes.js";
 import fashionBuddyRoutes from "./routes/fashionBuddyRoutes.js";
 // ────────────────────────────────────────────────────────
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const server = createServer(app);
@@ -48,7 +52,7 @@ app.use(
   })
 );
 app.use(express.json());
-app.use("/uploads", express.static("uploads"));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.get("/", (_req, res) => {
   res.json({ message: "Vintora API is running." });
