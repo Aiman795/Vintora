@@ -23,9 +23,6 @@ python-service/clip-model/
 # Build output
 frontend/dist/
 
-# Runtime uploads
-server/uploads/closet-*
-server/uploads/listing-*
 
 # OS files
 .DS_Store
