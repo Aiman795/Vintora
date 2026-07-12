@@ -17,7 +17,6 @@ __pycache__/
 venv/
 
 # ML models
-tryon-service/models/
 tryon-service/data/
 python-service/clip-model/
 
