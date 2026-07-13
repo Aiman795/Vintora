@@ -52,7 +52,16 @@ app.use(
   })
 );
 app.use(express.json());
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+const uploadDirs = [
+  path.join(__dirname, "uploads"),
+  path.join(process.cwd(), "uploads"),
+  path.join(process.cwd(), "server", "uploads")
+];
+
+uploadDirs.forEach((dir) => {
+  app.use("/uploads", express.static(dir));
+});
 
 app.get("/", (_req, res) => {
   res.json({ message: "Vintora API is running." });
