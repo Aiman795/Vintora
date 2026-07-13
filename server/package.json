@@ -9,6 +9,7 @@
     "start": "node server.js",
     "seed": "node seed/seedData.js",
     "seed:admin": "node seed/adminUser.js",
+    "uploads:fix-urls": "node seed/fixImageUrls.js",
     "users:list": "node seed/cleanUsers.js --list",
     "users:clean": "node seed/cleanUsers.js --delete"
   },

@@ -1,7 +1,7 @@
 // seed/fixImageUrls.js
 // Run with: node seed/fixImageUrls.js
 //
-// Replaces "http://localhost:5000" with the live Railway backend URL
+// Replaces "http://localhost:5000" with the live backend URL
 // inside every listing's imageUrls array (and closet items too),
 // so images work on the deployed frontend.
 //
@@ -15,8 +15,14 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
-const OLD_BASE = "http://localhost:5000";
-const NEW_BASE = "https://vintora-production-da41.up.railway.app"; // your Railway server URL
+const OLD_BASE = process.env.OLD_UPLOADS_BASE || "http://localhost:5000";
+const NEW_BASE = process.env.PUBLIC_BACKEND_URL;
+
+if (!NEW_BASE) {
+  console.error("Missing PUBLIC_BACKEND_URL. Example:");
+  console.error("PUBLIC_BACKEND_URL=https://your-backend.up.railway.app npm run uploads:fix-urls");
+  process.exit(1);
+}
 
 async function fixListings(db) {
   const collection = db.collection("listings");
