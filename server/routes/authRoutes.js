@@ -2,16 +2,12 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
-import { sendVerificationEmail, sendWelcomeEmail } from "../services/emailService.js";
+import { sendWelcomeEmail } from "../services/emailService.js";
 
 const router = express.Router();
 
 function signToken(id) {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "7d" });
-}
-
-function createVerificationCode() {
-  return String(Math.floor(100000 + Math.random() * 900000));
 }
 
 function publicUser(user) {
@@ -48,35 +44,44 @@ router.post("/register", async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const verificationCode = createVerificationCode();
+
+    // Email verification disabled for demo purposes — account is verified immediately on creation.
     const user = await User.create({
       name,
       email: email.toLowerCase(),
       password: hashedPassword,
       role,
-      emailVerified: false,
-      emailVerificationCode: await bcrypt.hash(verificationCode, 10),
-      emailVerificationExpires: new Date(Date.now() + 15 * 60 * 1000)
+      emailVerified: true,
+      emailVerificationCode: "",
+      emailVerificationExpires: null
     });
 
-    sendVerificationEmail({ name: user.name, email: user.email, code: verificationCode });
+    // Try to send a welcome email, but never let this block registration/login.
+    try {
+      sendWelcomeEmail({ name: user.name, email: user.email });
+    } catch (emailError) {
+      console.error("Welcome email failed (non-blocking):", emailError.message);
+    }
 
+    // Log the user in immediately since no verification step is required.
     res.status(201).json({
-      requiresVerification: true,
-      email: user.email,
-      message: "Account created. Please verify your email with the code we sent."
+      requiresVerification: false,
+      token: signToken(user._id),
+      user: publicUser(user)
     });
   } catch (error) {
     res.status(500).json({ message: "Unable to register user.", error: error.message });
   }
 });
 
+// Kept as a no-op endpoint in case the frontend still calls it anywhere —
+// it just confirms the account is verified (which it always is now).
 router.post("/verify-email", async (req, res) => {
   try {
-    const { email, code } = req.body;
+    const { email } = req.body;
 
-    if (!email || !code) {
-      return res.status(400).json({ message: "Email and verification code are required." });
+    if (!email) {
+      return res.status(400).json({ message: "Email is required." });
     }
 
     const user = await User.findOne({ email: email.toLowerCase() });
@@ -84,25 +89,10 @@ router.post("/verify-email", async (req, res) => {
       return res.status(404).json({ message: "Account not found." });
     }
 
-    if (user.emailVerified) {
-      return res.json({ token: signToken(user._id), user: publicUser(user) });
+    if (!user.emailVerified) {
+      user.emailVerified = true;
+      await user.save();
     }
-
-    if (!user.emailVerificationCode || !user.emailVerificationExpires || user.emailVerificationExpires < new Date()) {
-      return res.status(400).json({ message: "Verification code expired. Please request a new code." });
-    }
-
-    const codeMatches = await bcrypt.compare(String(code).trim(), user.emailVerificationCode);
-    if (!codeMatches) {
-      return res.status(400).json({ message: "Invalid verification code." });
-    }
-
-    user.emailVerified = true;
-    user.emailVerificationCode = "";
-    user.emailVerificationExpires = null;
-    await user.save();
-
-    sendWelcomeEmail({ name: user.name, email: user.email });
 
     res.json({ token: signToken(user._id), user: publicUser(user) });
   } catch (error) {
@@ -110,6 +100,7 @@ router.post("/verify-email", async (req, res) => {
   }
 });
 
+// Kept as a no-op endpoint for compatibility — verification is no longer required.
 router.post("/resend-verification", async (req, res) => {
   try {
     const { email } = req.body;
@@ -121,19 +112,10 @@ router.post("/resend-verification", async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: "Account not found." });
     }
-    if (user.emailVerified) {
-      return res.json({ message: "Email is already verified." });
-    }
 
-    const verificationCode = createVerificationCode();
-    user.emailVerificationCode = await bcrypt.hash(verificationCode, 10);
-    user.emailVerificationExpires = new Date(Date.now() + 15 * 60 * 1000);
-    await user.save();
-
-    sendVerificationEmail({ name: user.name, email: user.email, code: verificationCode });
-    res.json({ message: "A new verification code has been sent." });
+    res.json({ message: "Email verification is not required." });
   } catch (error) {
-    res.status(500).json({ message: "Unable to resend verification code.", error: error.message });
+    res.status(500).json({ message: "Unable to process request.", error: error.message });
   }
 });
 
@@ -155,13 +137,7 @@ router.post("/login", async (req, res) => {
       return res.status(403).json({ message: `Your account is ${user.accountStatus.toLowerCase()}. Contact Vintora support.` });
     }
 
-    if (!user.emailVerified) {
-      return res.status(403).json({
-        message: "Please verify your email before logging in.",
-        requiresVerification: true,
-        email: user.email
-      });
-    }
+    // Email verification check removed — no longer blocks login.
 
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
