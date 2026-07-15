@@ -1,29 +1,35 @@
 // server/services/emailService.js
 
-import nodemailer from "nodemailer";
-
 const BASE_URL = process.env.CLIENT_URL || "http://localhost:5173";
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "Vintora <onboarding@resend.dev>";
 
 async function sendEmail({ to, subject, html }) {
-  const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-    family: 4, // force IPv4 — avoids connection timeouts on Railway's IPv6 routing
-    connectionTimeout: 15000,
-  });
+  if (!RESEND_API_KEY) {
+    console.error(`[email] Failed "${subject}" → ${to}: RESEND_API_KEY is not set`);
+    return;
+  }
 
   try {
-    await transporter.sendMail({
-      from: `"Vintora" <${process.env.EMAIL_USER}>`,
-      to,
-      subject,
-      html,
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: FROM_EMAIL,
+        to,
+        subject,
+        html,
+      }),
     });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      throw new Error(`Resend API ${response.status}: ${errText}`);
+    }
+
     console.log(`[email] Sent "${subject}" → ${to}`);
   } catch (err) {
     console.error(`[email] Failed "${subject}" → ${to}:`, err.message);
