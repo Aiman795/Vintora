@@ -52,4 +52,9 @@ include_optional_router("closet_routes", "router", "/closet")
 include_optional_router("fashion_buddy_routes", "router", "/buddy")
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # reload=True is a development-only feature — it watches the filesystem
+    # and restarts the server on any file change. In production this caused
+    # a restart-loop (CLIP model cache writes / .pyc files triggered reloads),
+    # which is why requests were timing out and falling back to offline mode.
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
