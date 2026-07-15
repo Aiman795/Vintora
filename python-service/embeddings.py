@@ -89,6 +89,33 @@ def get_image_fingerprint(image: Image.Image) -> np.ndarray:
     return (arr > arr.mean()).astype(np.uint8).reshape(-1)
 
 
+# ── Color histogram — used to keep CLIP visual search color-aware ────────────
+# CLIP embeddings capture shape/semantic style strongly but color weakly, so a
+# navy potli bag and a white potli bag can score deceptively high on CLIP alone.
+# This histogram gets blended into the final score to penalise color mismatches.
+
+def get_color_histogram(image: Image.Image, bins: int = 32) -> np.ndarray:
+    img = ImageOps.exif_transpose(image).convert("RGB").resize((128, 128))
+    arr = np.asarray(img).astype(np.float32) / 255.0
+
+    # Drop near-white background pixels so the histogram reflects the garment/
+    # item color rather than a plain studio backdrop.
+    mask = arr.mean(axis=2) < 0.93
+    if mask.sum() < 50:  # fallback if almost everything got masked out
+        mask = np.ones(arr.shape[:2], dtype=bool)
+
+    pixels = arr[mask]
+
+    hist_parts = []
+    for channel in range(3):
+        hist, _ = np.histogram(pixels[:, channel], bins=bins, range=(0.0, 1.0))
+        hist_parts.append(hist.astype(np.float32))
+
+    hist_vec = np.concatenate(hist_parts)
+    norm = np.linalg.norm(hist_vec)
+    return hist_vec / norm if norm > 0 else hist_vec
+
+
 def _image_path_from_url(image_url: str) -> Path | None:
     if not image_url:
         return None
@@ -126,6 +153,17 @@ def _listing_fingerprint(image_url: str) -> np.ndarray | None:
         return None
 
 
+def _listing_color_histogram(image_url: str) -> np.ndarray | None:
+    image_path = _image_path_from_url(image_url)
+    if not image_path or not image_path.exists():
+        return None
+    try:
+        with Image.open(image_path) as img:
+            return get_color_histogram(img)
+    except Exception:
+        return None
+
+
 def _cosine(a: np.ndarray, b: np.ndarray) -> float:
     denom = float(np.linalg.norm(a) * np.linalg.norm(b))
     if denom == 0:
@@ -141,7 +179,7 @@ def _fingerprint_similarity(a: np.ndarray, b: np.ndarray) -> float:
 
 def _display_score(raw_score: float, uses_clip: bool = False) -> int:
     if uses_clip:
-        calibrated = (raw_score - 0.45) / 0.30
+        calibrated = (raw_score - 0.55) / 0.30
         return round(max(0.0, min(calibrated, 1.0)) * 100)
     calibrated = (raw_score - 0.78) / 0.22
     return round(max(0.0, min(calibrated, 1.0)) * 100)
@@ -266,9 +304,12 @@ def _category_fallback_search(categories: list[str], top_k: int = 4) -> list[dic
 def search_similar(query_embedding: np.ndarray, query_image: Image.Image = None, top_k: int = 4):
     uses_clip = len(query_embedding) == 512
     query_fingerprint = getattr(search_similar, "query_fingerprint", None)
+    query_color_hist = get_color_histogram(query_image) if (uses_clip and query_image is not None) else None
 
-    minimum_raw_score = 0.42 if uses_clip else 0.82
-    minimum_display = 40
+    # Raised thresholds: CLIP alone was letting same-category-but-wrong-color
+    # items (e.g. navy potli vs white potli) through as "confident" matches.
+    minimum_raw_score = 0.68 if uses_clip else 0.82
+    minimum_display = 55
 
     listings = list(listings_collection.find(
         {"status": "Live", "availabilityStatus": {"$ne": "Sold"}},
@@ -289,10 +330,16 @@ def search_similar(query_embedding: np.ndarray, query_image: Image.Image = None,
 
             visual_score = _cosine(query_embedding, embedding) if embedding is not None else 0.0
             hash_score = _fingerprint_similarity(query_fingerprint, fingerprint) if query_fingerprint is not None else 0.0
-            combined = max(
-                hash_score,
-                visual_score if uses_clip else (visual_score * 0.72) + (hash_score * 0.28)
-            )
+
+            if uses_clip:
+                color_hist = _listing_color_histogram(image_url)
+                color_score = _cosine(query_color_hist, color_hist) if (query_color_hist is not None and color_hist is not None) else 1.0
+                # Blend CLIP (shape/semantic) with color histogram so a
+                # different-colored item in the same category scores lower.
+                combined = (visual_score * 0.65) + (color_score * 0.35)
+            else:
+                combined = max(hash_score, (visual_score * 0.72) + (hash_score * 0.28))
+
             best_score = max(best_score, combined)
 
         if best_score > 0:
